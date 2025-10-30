@@ -25,17 +25,14 @@ SECRET_KEY = "django-insecure-m5kga*b8b+8sub6=3r(n#!!-b9i0ht4a%yb0#bzp9)$2h=-vw9
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [
-    "api.thedevpiyush.com",
-    "localhost",
-    "127.0.0.1",
-]
+ALLOWED_HOSTS = ["*"]
+
 
 CSRF_TRUSTED_ORIGINS = [
     "https://api.thedevpiyush.com",
 ]
 
-AUTH_USER_MODEL = "users.User"
+AUTH_USER_MODEL = "college.User"
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -46,6 +43,16 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "college",
+]
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    )
+}
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
 ]
 
 MIDDLEWARE = [
@@ -123,7 +130,7 @@ USE_I18N = True
 
 USE_TZ = True
 
-
+APPEND_SLASH = False
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
