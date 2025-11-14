@@ -8,12 +8,14 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from college.utils.check_roles import check_allow_roles
+from services import upload_to_supabase
 from ..serializers import *
 from ..models import *
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
 
 from supabase import create_client
+from services.upload_to_supabase import upload_to_supabase
 
 
 class UserView(APIView):
@@ -99,30 +101,6 @@ class CurrentUserView(APIView):
     permission_classes = [IsAuthenticated]
 
     # -----------------------------
-    # Helper: Upload to Supabase
-    # -----------------------------
-
-    def upload_to_supabase(self, file):
-        supabase_url = str(os.getenv("SUPABASE_URL"))
-        supabase_key = str(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
-        bucket = "profile-pictures"
-
-        supabase = create_client(supabase_url, supabase_key)
-
-        ext = file.name.split(".")[-1]
-        file_name = f"{uuid.uuid4()}.{ext}"
-
-        # Upload file
-        try:
-            supabase.storage.from_(bucket).upload(
-                file_name, file.read(), file_options={"content-type": file.content_type}
-            )
-            public_url = supabase.storage.from_(bucket).get_public_url(file_name)
-            return public_url
-        except:
-            return Response({"error":"Image Upload Failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    # -----------------------------
     # GET: Fetch current user
     # -----------------------------
     def get(self, request):
@@ -147,7 +125,7 @@ class CurrentUserView(APIView):
         image_file = request.FILES.get("profile_picture")
         if image_file:
             try:
-                uploaded_url = self.upload_to_supabase(image_file)
+                uploaded_url = upload_to_supabase(image_file)
                 print(uploaded_url)
                 data["profile_picture"] = uploaded_url
             except Exception as e:
