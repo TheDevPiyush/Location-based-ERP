@@ -45,7 +45,7 @@ export default function Toast({ message, type = "info", duration = 4000, onClose
 
   return (
     <div
-      className={`fixed bottom-6 right-6 z-55 flex min-w-[280px] max-w-[380px] items-center gap-3 rounded-3xl border border-white/50 bg-gradient-to-br px-5 py-4 text-sm text-foreground shadow-xl backdrop-blur-xl transition-all ${
+      className={`fixed bottom-6 right-6 z-55 flex min-w-[280px] max-w-[380px] items-center gap-3 rounded-3xl border border-white/50 bg-linear-to-br px-5 py-4 text-sm text-foreground shadow-xl backdrop-blur-xl transition-all ${
         variant.bg
       } ${visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
     >
