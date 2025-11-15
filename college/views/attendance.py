@@ -1,3 +1,6 @@
+import re
+import stat
+from pgvector.django import L2Distance
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -8,6 +11,7 @@ from datetime import timedelta
 from shapely.geometry import Point, Polygon
 
 from college.utils.check_roles import check_allow_roles
+from services.face_recognition import has_face
 from ..models import Batch, Subject, Attendance_Window, User, Attendance_Record
 from ..serializers import Attendance_WindowSerializer, AttendanceRecordSerializer
 
@@ -47,6 +51,12 @@ class AttendanceWindowView(APIView):
             .first()
         )
 
+        if not window:
+            return Response(
+                {"message": "Attendance window not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         # Check time validity
         now = timezone.now()
         window_end = window.start_time + timedelta(seconds=int(window.duration))
@@ -55,12 +65,6 @@ class AttendanceWindowView(APIView):
             return Response(
                 {"message": "Attendance window is closed"},
                 status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not window:
-            return Response(
-                {"message": "Attendance window not found."},
-                status=status.HTTP_404_NOT_FOUND,
             )
 
         serializer = Attendance_WindowSerializer(window)
@@ -141,15 +145,9 @@ class AttendanceRecordView(APIView):
     def post(self, request):
         """Create or update attendance based on today's date (not created_at)."""
 
-        # role-based access control
-        if allowed := check_allow_roles(
-            request.user, [User.Role.TEACHER, User.Role.ADMIN, User.Role.STUDENT]
-        ):
-            return allowed
-
         data = request.data
+        image = request.FILES.get("student_picture")
         window_id = data.get("attendance_window")
-        body_user_id = data.get("user")
 
         if not window_id:
             return Response(
@@ -157,16 +155,57 @@ class AttendanceRecordView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Identify marking user
+        has_face_flag, encoding = has_face(image_file=image)
+
+        if not has_face_flag:
+            return Response(
+                {"error": "Not a valid face in the provided image"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if encoding is None:
+            return Response(
+                {"error": "Couldn't extract valid face data from the provided image"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # role-based access control
+        if allowed := check_allow_roles(
+            request.user, [User.Role.TEACHER, User.Role.ADMIN, User.Role.STUDENT]
+        ):
+            return allowed
+
+        user_data = (
+            User.objects.annotate(distance=L2Distance("face_embedding", encoding))
+            .order_by("distance")
+            .first()
+        )
+        print(user_data)
+        print(user_data.distance)
+
+        if not user_data:
+            return Response(
+                {
+                    "error": "Couldn't find any user with the provided face. make sure you are registered and image is clear"
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if user_data and user_data.distance > 0.55:
+            return Response(
+                {"error": "Face did not match!"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         if request.user.role == User.Role.STUDENT:
             target_user = request.user
         else:
-            if not body_user_id:
+            if not user_data:
                 return Response(
                     {"message": "'user' is required"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            target_user = get_object_or_404(User, pk=body_user_id)
+            target_user = get_object_or_404(User, pk=user_data)
 
         window = get_object_or_404(Attendance_Window, pk=window_id)
 

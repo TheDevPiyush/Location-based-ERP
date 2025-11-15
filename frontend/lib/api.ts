@@ -212,11 +212,47 @@ export async function upsertWindow(params: {
   return apiFetch("/attendance/window/", { method: "POST", body: params });
 }
 
-export async function markAttendance(attendance_window: number, user?: number) {
-  return apiFetch("/attendance/record/", {
+export async function markAttendance(attendance_window: number, student_picture: File, user?: number) {
+  const formData = new FormData();
+  formData.append("student_picture", student_picture);
+  formData.append("attendance_window", String(attendance_window));
+  if (user) {
+    formData.append("user", String(user));
+  }
+
+  const token = getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}/attendance/record/`, {
     method: "POST",
-    body: { attendance_window, ...(user ? { user } : {}) },
+    headers,
+    body: formData,
   });
+
+  if (res.status === 401) {
+    const newAccess = await refreshAccessToken();
+    if (newAccess) {
+      const retryRes = await fetch(`${API_URL}/attendance/record/`, {
+        method: "POST",
+        headers: { ...headers, Authorization: `Bearer ${newAccess}` },
+        body: formData,
+      });
+      if (!retryRes.ok) {
+        const msg = await parseErrorMessage(retryRes);
+        throw new Error(msg);
+      }
+      return (await retryRes.json());
+    }
+    const msg = await parseErrorMessage(res);
+    throw new Error(msg || "Unauthorized");
+  }
+
+  if (!res.ok) {
+    const msg = await parseErrorMessage(res);
+    throw new Error(msg || `Request failed with status ${res.status}`);
+  }
+  return (await res.json());
 }
 
 export async function updateMyLocation(latitude: number, longitude: number) {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchMe, fetchSubjects, getWindow, markAttendance, updateMyLocation } from "@/lib/api";
 import Alert from "@/app/components/Alert";
 import Toast from "@/app/components/Toast";
+import CameraModal from "@/app/components/CameraModal";
 
 export default function AttendancePage() {
   const [me, setMe] = useState<any>(null);
@@ -13,6 +14,8 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" | "info" }>>([]);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   const addToast = (message: string, type: "success" | "error" | "info" = "success") => {
     const id = Date.now();
@@ -90,14 +93,21 @@ export default function AttendancePage() {
 
   const markMe = async () => {
     if (!windowInfo?.id) return;
-    setLoading(true);
+    setIsCameraModalOpen(true);
+  };
+
+  const handlePhotoCapture = async (file: File) => {
+    if (!windowInfo?.id) return;
+    
+    setIsUploading(true);
     try {
-      await markAttendance(windowInfo.id);
+      await markAttendance(windowInfo.id, file);
       addToast("✅ Attendance marked successfully", "success");
+      setIsCameraModalOpen(false);
     } catch (e: any) {
       addToast(`❌ ${e.message}`, "error");
     } finally {
-      setLoading(false);
+      setIsUploading(false);
     }
   };
 
@@ -201,6 +211,13 @@ export default function AttendancePage() {
       {toasts.map((toast) => (
         <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => removeToast(toast.id)} />
       ))}
+
+      <CameraModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        onCapture={handlePhotoCapture}
+        isUploading={isUploading}
+      />
     </div>
   );
 }
