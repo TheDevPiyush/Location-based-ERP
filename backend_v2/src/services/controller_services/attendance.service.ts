@@ -20,8 +20,18 @@ function isExpired(startTime: Date, durationSec: number) {
     return Date.now() > startTime.getTime() + durationSec * 1000;
 }
 
+function localDateString(timeZone = process.env.APP_TIMEZONE || "Asia/Kolkata") {
+    // "en-CA" gives YYYY-MM-DD format.
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(new Date());
+}
+
 function today() {
-    return new Date().toISOString().split("T")[0] as string;
+    return localDateString() as string;
 }
 
 // ─── Window ───────────────────────────────────────────────────────────────────

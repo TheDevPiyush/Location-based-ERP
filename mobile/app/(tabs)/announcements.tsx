@@ -524,7 +524,12 @@ export default function AnnouncementsScreen() {
         is_pinned: false,
     });
 
-    const isAdmin = user?.is_staff || false;
+    const isAdmin = Boolean(
+        (user as any)?.is_staff ||
+        (user as any)?.isStaff ||
+        user?.role === 'admin' ||
+        user?.role === 'teacher'
+    );
 
     useFocusEffect(
         useCallback(() => {
@@ -609,7 +614,7 @@ export default function AnnouncementsScreen() {
         }
     };
 
-    const handleDelete = (id: number) => {
+    const handleDelete = (id: number | string) => {
         Alert.alert(
             'Delete Announcement',
             'Are you sure you want to delete this announcement?',
@@ -643,6 +648,17 @@ export default function AnnouncementsScreen() {
             default:
                 return '#999';
         }
+    };
+
+    const formatAnnouncementDate = (announcement: Announcement) => {
+        const raw =
+            (announcement as any).published_at ||
+            (announcement as any).created_at ||
+            null;
+        if (!raw) return 'Date unavailable';
+        const dt = new Date(raw);
+        if (Number.isNaN(dt.getTime())) return 'Date unavailable';
+        return dt.toLocaleDateString();
     };
 
     const renderContent = (announcement: Announcement) => {
@@ -831,7 +847,7 @@ export default function AnnouncementsScreen() {
                                             {announcement.created_by?.name || 'Admin'}
                                         </Text>
                                         <Text style={[styles.footerText, { fontFamily: Fonts.Helix.SemiBold }]}>
-                                            {new Date(announcement.published_at).toLocaleDateString()}
+                                            {formatAnnouncementDate(announcement)}
                                         </Text>
                                     </View>
                                     {isAdmin && (

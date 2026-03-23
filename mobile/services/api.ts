@@ -51,6 +51,25 @@ class ApiService {
     };
   }
 
+  private normalizeAnnouncement(a: any): any {
+    return {
+      ...a,
+      id: a?.id,
+      announcement_type: a?.announcement_type ?? a?.announcementType ?? "text",
+      text_content: a?.text_content ?? a?.textContent ?? null,
+      audio_url: a?.audio_url ?? a?.audioUrl ?? null,
+      video_url: a?.video_url ?? a?.videoUrl ?? null,
+      target_batch: a?.target_batch ?? a?.targetBatchId ?? null,
+      target_university: a?.target_university ?? a?.targetUniversityId ?? null,
+      is_published: a?.is_published ?? a?.isPublished ?? false,
+      is_pinned: a?.is_pinned ?? a?.isPinned ?? false,
+      published_at: a?.published_at ?? a?.publishedAt ?? a?.created_at ?? a?.createdAt ?? null,
+      created_at: a?.created_at ?? a?.createdAt ?? null,
+      updated_at: a?.updated_at ?? a?.updatedAt ?? null,
+      created_by: a?.created_by ?? a?.createdBy ?? null,
+    };
+  }
+
   // ── Core methods ─────────────────────────────────────────────────────────
 
   async get<T>(endpoint: string): Promise<T> {
@@ -286,17 +305,55 @@ class ApiService {
 
   /** GET /api/announcement */
   async getAnnouncements(): Promise<any[]> {
-    return this.get<any[]>("/announcement");
+    const rows = await this.get<any[]>("/announcement");
+    return Array.isArray(rows) ? rows.map((r) => this.normalizeAnnouncement(r)) : [];
   }
 
   /** GET /api/announcement/:id */
   async getAnnouncementById(id: string): Promise<any> {
-    return this.get(`/announcement/${id}`);
+    const row = await this.get(`/announcement/${id}`);
+    return this.normalizeAnnouncement(row);
   }
 
   /** GET /api/announcement/search?q= */
   async searchAnnouncements(query: string): Promise<any[]> {
-    return this.get<any[]>(`/announcement/search?q=${encodeURIComponent(query)}`);
+    const rows = await this.get<any[]>(`/announcement/search?q=${encodeURIComponent(query)}`);
+    return Array.isArray(rows) ? rows.map((r) => this.normalizeAnnouncement(r)) : [];
+  }
+
+  /** POST /api/announcement */
+  async createAnnouncement(payload: {
+    title: string;
+    description?: string;
+    announcement_type: "text" | "audio" | "video";
+    text_content?: string;
+    audio_url?: string;
+    video_url?: string;
+    is_published?: boolean;
+    is_pinned?: boolean;
+  }): Promise<any> {
+    const row = await this.post("/announcement", payload);
+    return this.normalizeAnnouncement(row);
+  }
+
+  /** DELETE /api/announcement/:id */
+  async deleteAnnouncement(id: string | number): Promise<void> {
+    return this.delete(`/announcement/${id}`);
+  }
+
+  /** POST /api/announcement/upload-media (multipart) */
+  async uploadAnnouncementMedia(formData: FormData): Promise<{ url: string }> {
+    const token = await this.getToken();
+    const res = await fetch(`${this.baseURL}/announcement/upload-media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token || ""}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(parseError(body, "Media upload failed"));
+    }
+    return res.json();
   }
 
 

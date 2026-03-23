@@ -10,6 +10,15 @@ function param(v: string | string[] | undefined) {
     return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
+function localDateString(d = new Date(), timeZone = process.env.APP_TIMEZONE || "Asia/Kolkata") {
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(d);
+}
+
 
 export async function getAttendanceAnalytics(req: Request, res: Response) {
     try {
@@ -31,10 +40,10 @@ export async function getAttendanceAnalytics(req: Request, res: Response) {
 
         const today = new Date();
 
-        const todayStr = today.toISOString().split("T")[0]!;
+        const todayStr = localDateString(today);
 
         const startDate = param(req.query.start_date as string)
-            ?? new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]!;
+            ?? localDateString(new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000));
 
         const endDate = param(req.query.end_date as string) ?? todayStr;
 
