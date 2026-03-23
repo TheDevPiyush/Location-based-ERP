@@ -1,15 +1,8 @@
 import { db } from "../../db";
-import { batches, subjects, attendanceWindows, attendanceRecords, users } from "../../db/schema";
+import { batches, subjects, attendanceWindows, attendanceRecords, users, courses, CollegeBoundries } from "../../db/schema";
 import { eq, and } from "drizzle-orm";
 import { uploadToS3, deleteFromS3 } from "../aws/s3.service";
 import { compareFace } from "../aws/rekognition.service";
-
-const COLLEGE_BOUNDARY: [number, number][] = [
-    [85.101206, 25.632875],
-    [85.101317, 25.632820],
-    [85.101409, 25.632982],
-    [85.101295, 25.633035],
-];
 
 function isInsidePolygon(point: [number, number], polygon: [number, number][]) {
     const [px, py] = point;
@@ -120,8 +113,10 @@ export async function markAttendanceRecord(opts: {
     file: Express.Multer.File;
     userId: string;
     userRole: string;
+    latitude?: number | null;
+    longitude?: number | null;
 }) {
-    const { windowId, file, userId, userRole } = opts;
+    const { windowId, file, userId, userRole, latitude, longitude } = opts;
 
     const [window] = await db.select().from(attendanceWindows).where(eq(attendanceWindows.id, windowId)).limit(1);
     if (!window) throw { status: 404, message: "Attendance window not found" };
@@ -156,13 +151,53 @@ export async function markAttendanceRecord(opts: {
     if (!targetUser.faceRegistered) throw { status: 403, message: "Face not registered for this user. Contact admin." };
     if (targetUser.batchId !== window.targetBatchId) throw { status: 400, message: "User does not belong to the window's batch" };
 
-    // Location check
-    if (!targetUser.latitude || !targetUser.longitude) throw { status: 400, message: "User location not available. Update your location first." };
+    // Location check using live app coordinates + DB boundaries
+    if (latitude == null || longitude == null) {
+        throw { status: 400, message: "Live location is required to mark attendance" };
+    }
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+        throw { status: 400, message: "Invalid location coordinates" };
+    }
 
-    const lat = parseFloat(targetUser.latitude);
-    const lon = parseFloat(targetUser.longitude);
-    if (isNaN(lat) || isNaN(lon)) throw { status: 400, message: "Invalid user location" };
-    if (!isInsidePolygon([lon, lat], COLLEGE_BOUNDARY)) throw { status: 400, message: "Student is outside the college boundary" };
+    const [targetBatch] = await db
+        .select()
+        .from(batches)
+        .where(eq(batches.id, window.targetBatchId!))
+        .limit(1);
+    if (!targetBatch?.courseId) {
+        throw { status: 400, message: "Could not resolve batch/course for boundary validation" };
+    }
+
+    const [targetCourse] = await db
+        .select()
+        .from(courses)
+        .where(eq(courses.id, targetBatch.courseId))
+        .limit(1);
+    if (!targetCourse?.universityId) {
+        throw { status: 400, message: "Could not resolve university for boundary validation" };
+    }
+
+    const boundaries = await db
+        .select()
+        .from(CollegeBoundries)
+        .where(and(
+            eq(CollegeBoundries.universityId, targetCourse.universityId),
+            eq(CollegeBoundries.isActive, true),
+        ));
+
+    if (!boundaries.length) {
+        throw { status: 400, message: "No active college boundaries configured for this university" };
+    }
+
+    const point: [number, number] = [longitude, latitude];
+    const insideAnyBoundary = boundaries.some((b) => {
+        const polygon = b.polygonCords as [number, number][] | null;
+        if (!polygon || polygon.length < 3) return false;
+        return isInsidePolygon(point, polygon);
+    });
+    if (!insideAnyBoundary) {
+        throw { status: 400, message: "You are outside all configured college boundaries" };
+    }
 
     // Upsert record
     const date = today();

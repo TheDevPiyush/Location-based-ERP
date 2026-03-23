@@ -65,16 +65,23 @@ export const markAttendance = async (req: Request, res: Response) => {
     try {
         
         const windowId = req.body.attendance_window;
+        const latitudeRaw = req.body.latitude;
+        const longitudeRaw = req.body.longitude;
         
         if (!windowId) return res.status(400).json({ error: "'attendance_window' is required" });
         
         if (!req.file) return res.status(400).json({ error: "A face photo is required" });
+
+        const latitude = latitudeRaw != null ? Number(latitudeRaw) : null;
+        const longitude = longitudeRaw != null ? Number(longitudeRaw) : null;
 
         const { record, created, similarity } = await markAttendanceRecord({
             windowId,
             file: req.file,
             userId: req.user.id,
             userRole: req.user.role!,
+            latitude,
+            longitude,
         });
 
         return res.status(created ? 201 : 200).json({

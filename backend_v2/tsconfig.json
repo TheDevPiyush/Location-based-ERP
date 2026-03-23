@@ -3,7 +3,7 @@
     // Environment setup & latest features
     "lib": ["DOM"],
     "target": "es2020",
-    "module": "Preserve",
+    "module": "es2020",
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "allowJs": true,

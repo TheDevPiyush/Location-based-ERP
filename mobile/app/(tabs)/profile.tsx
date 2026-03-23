@@ -162,6 +162,14 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.retryButton} onPress={() => { setLoading(true); fetchUser(); }}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={handleLogout}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="log-out-outline" size={20} color={AppColors.status.error} />
+            <Text style={styles.logoutText}>Sign out</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );

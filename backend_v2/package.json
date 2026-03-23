@@ -10,7 +10,7 @@
   "scripts": {
     "db:migrate": "bun drizzle-kit migrate",
     "db:generate": "bun drizzle-kit generate",
-    "backend": "bun --watch index.ts",
+    "dev": "bun --watch index.ts",
     "seed": "bun src/scripts/seedDB.ts"
   },
   "peerDependencies": {

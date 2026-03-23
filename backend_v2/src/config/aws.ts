@@ -40,3 +40,7 @@ export const rekognition = new RekognitionClient({
 export const AWS_BUCKET = process.env.AWS_S3_BUCKET!;
 export const AWS_COLLECTION =
   process.env.AWS_REKOGNITION_COLLECTION!;
+
+
+
+

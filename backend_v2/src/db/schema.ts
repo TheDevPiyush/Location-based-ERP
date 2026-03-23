@@ -11,12 +11,13 @@ import {
   index,
   uniqueIndex,
   pgEnum,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 import { sql } from "drizzle-orm";
 
 /* ============================================================
-   ENUMS
+  ENUMS
 ============================================================ */
 
 export const userRoleEnum = pgEnum("user_role", [
@@ -40,7 +41,7 @@ export const announcementTypeEnum = pgEnum("announcement_type", [
 ]);
 
 /* ============================================================
-   UNIVERSITY
+  UNIVERSITY
 ============================================================ */
 
 export const universities = pgTable("universities", {
@@ -54,7 +55,7 @@ export const universities = pgTable("universities", {
 });
 
 /* ============================================================
-   COURSE
+  COURSE
 ============================================================ */
 
 export const courses = pgTable("courses", {
@@ -70,7 +71,7 @@ export const courses = pgTable("courses", {
 });
 
 /* ============================================================
-   BATCH
+  BATCH
 ============================================================ */
 
 export const batches = pgTable("batches", {
@@ -89,7 +90,7 @@ export const batches = pgTable("batches", {
 });
 
 /* ============================================================
-   USERS (AWS Rekognition Ready)
+  USERS (AWS Rekognition Ready)
 ============================================================ */
 
 export const users = pgTable(
@@ -169,7 +170,7 @@ export const users = pgTable(
 );
 
 /* ============================================================
-   SUBJECT
+  SUBJECT
 ============================================================ */
 
 export const subjects = pgTable("subjects", {
@@ -188,7 +189,7 @@ export const subjects = pgTable("subjects", {
 });
 
 /* ============================================================
-   ATTENDANCE WINDOW
+  ATTENDANCE WINDOW
 ============================================================ */
 
 export const attendanceWindows = pgTable(
@@ -224,7 +225,7 @@ export const attendanceWindows = pgTable(
 );
 
 /* ============================================================
-   ATTENDANCE RECORD
+  ATTENDANCE RECORD
 ============================================================ */
 
 export const attendanceRecords = pgTable("attendance_records", {
@@ -247,7 +248,7 @@ export const attendanceRecords = pgTable("attendance_records", {
 });
 
 /* ============================================================
-   ANNOUNCEMENTS
+  ANNOUNCEMENTS
 ============================================================ */
 
 export const announcements = pgTable(
@@ -291,3 +292,14 @@ export const announcements = pgTable(
     ),
   })
 );
+
+export const CollegeBoundries = pgTable("college_boundries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 255 }),
+  code: varchar("code", { length: 255 }),
+  universityId: uuid("university_id")
+    .references(() => universities.id, { onDelete: "cascade" }),
+  polygonCords: jsonb("polygon_cords").$type<[number, number][]>(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});

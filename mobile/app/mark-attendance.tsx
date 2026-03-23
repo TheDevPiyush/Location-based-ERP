@@ -25,8 +25,8 @@ import type { CurrentUser } from '@/types/user';
 import type { SubjectItem } from '@/types/dashboard';
 import type { AttendanceWindow } from '@/types/window';
 
-// ─── Toggle this to false when going to production ────────────────────────────
-const IS_TEST_MODE = true;
+// Attendance now requires live location (no test bypass).
+const IS_TEST_MODE = false;
 
 const DURATION_OPTS = [30, 60, 120, 300];
 
@@ -353,32 +353,29 @@ export default function MarkAttendanceScreen() {
     setScanStep('face');
     await new Promise((r) => setTimeout(r, 2000)); // let animation play
 
-    // Step 3 — location (skip in test mode)
+    // Step 3 — location
     let location: { latitude: number; longitude: number } | null = null;
-
-    if (!IS_TEST_MODE) {
-      setScanStep('location');
-      try {
-        const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
-        if (locStatus !== 'granted') {
-          setScanStep('error');
-          setScanError('Location permission is required in production mode.');
-          setTimeout(() => setScanStep('idle'), 2500);
-          return;
-        }
-        const coords = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-        location = {
-          latitude:  coords.coords.latitude,
-          longitude: coords.coords.longitude,
-        };
-      } catch {
+    setScanStep('location');
+    try {
+      const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
+      if (locStatus !== 'granted') {
         setScanStep('error');
-        setScanError('Failed to get location. Please try again.');
+        setScanError('Location permission is required to mark attendance.');
         setTimeout(() => setScanStep('idle'), 2500);
         return;
       }
+      const coords = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      location = {
+        latitude:  coords.coords.latitude,
+        longitude: coords.coords.longitude,
+      };
+    } catch {
+      setScanStep('error');
+      setScanError('Failed to get location. Please try again.');
+      setTimeout(() => setScanStep('idle'), 2500);
+      return;
     }
 
     // Step 4 — upload + verify
