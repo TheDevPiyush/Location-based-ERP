@@ -74,6 +74,14 @@ export const markAttendance = async (req: Request, res: Response) => {
 
         const latitude = latitudeRaw != null ? Number(latitudeRaw) : null;
         const longitude = longitudeRaw != null ? Number(longitudeRaw) : null;
+        console.log("[ATTENDANCE_LOCATION][backend] received", {
+            userId: req.user.id,
+            windowId,
+            latitudeRaw,
+            longitudeRaw,
+            latitude,
+            longitude,
+        });
 
         const { record, created, similarity } = await markAttendanceRecord({
             windowId,

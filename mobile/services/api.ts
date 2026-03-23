@@ -155,6 +155,12 @@ class ApiService {
     return this.get('/batch');
   }
 
+  /** GET /api/course */
+  async getCourses(): Promise<Array<{ id: string; name: string | null; code: string | null }>> {
+    const rows = await this.get<Array<{ id: string; name: string | null; code?: string | null }>>('/course');
+    return rows.map((r) => ({ id: r.id, name: r.name, code: r.code ?? null }));
+  }
+
   // ── Subjects ──────────────────────────────────────────────────────────────
 
   /** GET /api/subject */

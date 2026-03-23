@@ -56,15 +56,40 @@ export default function ProfileScreen() {
 
   // Image upload state
   const [uploading, setUploading] = useState(false);
+  const canUpdatePicture = Boolean(
+    user?.can_update_picture ?? (user as any)?.canUpdatePicture
+  );
+  const profilePictureUri =
+    user?.profile_picture ?? (user as any)?.profilePicture ?? null;
 
-  const handleEditPicture = useCallback(async () => {
-    if (!user?.can_update_picture) return;
+  const uploadAndRegisterFace = useCallback(async (uri: string) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('profile_picture', {
+        uri,
+        name: 'profile.jpg',
+        type: 'image/jpeg',
+      } as any);
 
+      // Backend updateCurrentUser() + updateProfilePicture() will register face in Rekognition.
+      const response = await apiService.patchCurrentUser(formData);
+      setUser(response);
+      Alert.alert('Success', 'Face photo uploaded and registered successfully!');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to upload/register face';
+      Alert.alert('Error', msg);
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  const pickFromGallery = useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(
         'Permission required',
-        'Please allow access to your photos to update your profile picture.'
+        'Please allow access to your photos to upload your face picture.'
       );
       return;
     }
@@ -73,35 +98,50 @@ export default function ProfileScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.7,
+      quality: 0.8,
     });
 
     if (result.canceled) return;
-
     const asset = result.assets[0];
     if (!asset?.uri) return;
 
-    setUploading(true);
+    await uploadAndRegisterFace(asset.uri);
+  }, [uploadAndRegisterFace]);
 
-    try {
-      const formData = new FormData();
-      formData.append('profile_picture', {
-        uri: asset.uri,
-        name: 'profile.jpg',
-        type: 'image/jpeg',
-      } as any);
-
-      const response = await apiService.patchCurrentUser(formData);
-      setUser(response);
-
-      Alert.alert('Success', 'Profile picture updated!');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to update image';
-      Alert.alert('Error', msg);
-    } finally {
-      setUploading(false);
+  const captureFromCamera = useCallback(async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Permission required',
+        'Please allow camera access to capture your face picture.'
+      );
+      return;
     }
-  }, [user]);
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      cameraType: ImagePicker.CameraType.front,
+    });
+
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset?.uri) return;
+
+    await uploadAndRegisterFace(asset.uri);
+  }, [uploadAndRegisterFace]);
+
+  const handleEditPicture = useCallback(async () => {
+    if (!canUpdatePicture) return;
+
+    Alert.alert('Upload Face Photo', 'Choose how you want to add your face picture', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Camera', onPress: () => { void captureFromCamera(); } },
+      { text: 'Gallery', onPress: () => { void pickFromGallery(); } },
+    ]);
+  }, [canUpdatePicture, captureFromCamera, pickFromGallery]);
 
 
   const fetchUser = useCallback(async () => {
@@ -191,15 +231,15 @@ export default function ProfileScreen() {
       >
         <View style={styles.avatarCard}>
           <View style={styles.avatarWrapper}>
-            {user?.profile_picture ? (
-              <Image source={{ uri: user.profile_picture }} style={styles.avatar} />
+            {profilePictureUri ? (
+              <Image source={{ uri: profilePictureUri }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <Ionicons name="person" size={40} color={AppColors.text.link} />
               </View>
             )}
             {/* Edit icon overlay if allowed */}
-            {user?.can_update_picture ? (
+            {canUpdatePicture ? (
               <TouchableOpacity style={styles.editIcon} activeOpacity={0.7} onPress={handleEditPicture} disabled={uploading}>
                 <Ionicons name="create-outline" size={22} color={AppColors.primary[600]} />
                 {uploading ? <ActivityIndicator size={16} color={AppColors.primary[600]} style={{ position: 'absolute', top: -18, right: -18 }} /> : null}

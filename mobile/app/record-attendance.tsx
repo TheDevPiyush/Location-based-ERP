@@ -45,6 +45,13 @@ function formatMMSS(total: number) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+function getCourseLabel(course: Course): string {
+  // Avoid showing UUID as a "name"
+  if (course.name && course.name !== course.id) return course.name;
+  if (course.code) return course.code;
+  return 'Unnamed Course';
+}
+
 // ─── Selection row ────────────────────────────────────────────────────────────
 function SelectRow<T extends { id: string; name?: string | null; code?: string | null }>({
   items,
@@ -164,13 +171,13 @@ export default function RecordAttendanceScreen() {
       // Fall back to /api/course if available
       let courseList: Course[] = [];
       try {
-        courseList = await (apiService as any).getCourses() as Course[];
+        courseList = await apiService.getCourses();
       } catch {
         // If no getCourses endpoint, derive from batch data
         const seen = new Set<string>();
         bats.forEach((b: any) => {
           const cId   = b.courseId ?? b.course?.id;
-          const cName = b.course?.name ?? b.course?.code ?? cId;
+          const cName = b.course?.name ?? b.course?.code ?? null;
           const cCode = b.course?.code ?? null;
           if (cId && !seen.has(cId)) {
             seen.add(cId);
@@ -367,13 +374,18 @@ export default function RecordAttendanceScreen() {
           {selectedCourse && courseId ? (
             <View style={styles.selectedRow}>
               <Ionicons name="school" size={18} color={AppColors.primary[600]} />
-              <Text style={styles.selectedText}>{selectedCourse.name || selectedCourse.code}</Text>
+              <Text style={styles.selectedText}>{getCourseLabel(selectedCourse)}</Text>
               {selectedCourse.code && selectedCourse.name && (
                 <View style={styles.tag}><Text style={styles.tagText}>{selectedCourse.code}</Text></View>
               )}
             </View>
           ) : (
-            <SelectRow items={courses} selected={courseId} onSelect={selectCourse} emptyText="No courses found" />
+            <SelectRow
+              items={courses.map((c) => ({ ...c, name: getCourseLabel(c) }))}
+              selected={courseId}
+              onSelect={selectCourse}
+              emptyText="No courses found"
+            />
           )}
         </View>
 

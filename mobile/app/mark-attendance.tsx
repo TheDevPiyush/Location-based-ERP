@@ -371,6 +371,10 @@ export default function MarkAttendanceScreen() {
         latitude:  coords.coords.latitude,
         longitude: coords.coords.longitude,
       };
+      console.log("[ATTENDANCE_LOCATION][mobile] sending", {
+        latitude: location.latitude,
+        longitude: location.longitude,
+      });
     } catch {
       setScanStep('error');
       setScanError('Failed to get location. Please try again.');
@@ -382,6 +386,11 @@ export default function MarkAttendanceScreen() {
     setScanStep('uploading');
     setError(null);
     try {
+      console.log("[ATTENDANCE_LOCATION][mobile] payload before markAttendance", {
+        attendance_window: windowInfo.id,
+        latitude: location?.latitude ?? null,
+        longitude: location?.longitude ?? null,
+      });
       await apiService.markAttendance(windowInfo.id as any, imageUri, location);
       setScanStep('done');
       await new Promise((r) => setTimeout(r, 1800));
