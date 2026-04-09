@@ -1,5 +1,0 @@
-# .gitignore
-venv/
-.venv/
-dummy.py
-.env
