@@ -19,10 +19,12 @@
   "dependencies": {
     "@aws-sdk/client-rekognition": "^3.999.0",
     "@aws-sdk/client-s3": "^3.999.0",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/nodemailer": "^7.0.9",
+    "cors": "^2.8.6",
     "crypto": "^1.0.1",
     "dotenv": "^17.3.0",
     "drizzle-orm": "^0.45.1",

@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/app/components/Header";
 import { Toaster } from "@/app/components/ui/toaster";
 import localFont from "next/font/local";
 
 const myFont = localFont({
-  src: "../public/fonts/Hellix-Medium.ttf", // adjust path based on your folder
-  variable: "--font-hellix-medium",         // optional CSS variable
+  src: "../public/fonts/Hellix-Medium.ttf",
+  variable: "--font-hellix-medium",
 });
 
 export const metadata: Metadata = {
-  title: "CIMAGE ERP · Geofence Attendance",
-  description: "Modern, simple student portal to mark geofenced attendance and manage profile.",
-  applicationName: "CIMAGE ERP",
+  title: "CIMAGE ERP · Admin Dashboard",
+  description:
+    "Admin dashboard for managing geofenced attendance, analytics, and campus operations.",
+  applicationName: "CIMAGE ERP Admin",
   icons: { icon: "/favicon.ico" },
 };
 
@@ -27,7 +27,9 @@ export default function RootLayout({
       <body className={`${myFont.variable} antialiased`}>
         <div className="app-shell">
           <Header />
-          <main className="container py-10 sm:py-12 lg:py-16">{children}</main>
+          <main className="flex-1 px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+            <div className="mx-auto w-full max-w-7xl">{children}</div>
+          </main>
         </div>
         <Toaster />
       </body>

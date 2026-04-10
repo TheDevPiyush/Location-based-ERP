@@ -1,26 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --background: 0 0% 98%;
-  --foreground: 222.2 84% 4.9%;
+  --background: 220 14% 96%;
+  --foreground: 224 71% 4%;
   --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
+  --card-foreground: 224 71% 4%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
+  --popover-foreground: 224 71% 4%;
   --primary: 221.2 83.2% 53.3%;
   --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 220.9 39.3% 11%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 8.9% 46.1%;
+  --accent: 220 14% 96%;
+  --accent-foreground: 220.9 39.3% 11%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
-  --border: 214.3 31.8% 88%;
-  --input: 214.3 31.8% 91.4%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
   --ring: 221.2 83.2% 53.3%;
-  --radius: 0.5rem;
+  --radius: 0.625rem;
+  --sidebar-bg: 224 71% 4%;
+  --sidebar-fg: 220 14% 96%;
+  --success: 142 76% 36%;
+  --warning: 38 92% 50%;
 }
 
 @theme inline {
@@ -54,100 +58,38 @@
 body {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-family: var(--font-hellix-medium, ui-sans-serif), system-ui,
+    -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   min-height: 100vh;
 }
 
 .app-shell {
   @apply relative flex min-h-screen flex-col;
-  z-index: 1;
-}
-
-main {
-  @apply flex-1;
-}
-
-/* simple components */
-.container {
-  @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
-}
-
-.btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-transform duration-150 hover:-translate-y-0.5 active:translate-y-0 active:opacity-90 disabled:pointer-events-none disabled:opacity-60;
-  box-shadow: var(--shadow-tiny);
-}
-
-.btn-outline {
-  @apply inline-flex items-center justify-center gap-2 rounded-full border border-[rgba(124,92,255,0.25)] bg-white/80 px-5 py-2.5 text-sm font-medium text-primary transition-all hover:-translate-y-0.5 hover:border-[rgba(124,92,255,0.45)] hover:bg-white active:translate-y-0 disabled:pointer-events-none disabled:opacity-60;
-  box-shadow: var(--shadow-tiny);
-}
-
-.btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 rounded-full bg-transparent px-4 py-2 text-sm font-medium text-[var(--muted-foreground)] transition-colors hover:bg-white/70 hover:text-foreground;
-}
-
-.input {
-  @apply w-full rounded-2xl border border-[rgba(124,92,255,0.2)] bg-white/85 px-4 py-3 text-sm text-foreground shadow-inner transition-all focus:border-primary/70 focus:outline-none focus:ring-4 focus:ring-primary/20;
-}
-
-.select,
-textarea {
-  @apply w-full rounded-2xl border border-[rgba(124,92,255,0.2)] bg-white/85 px-4 py-3 text-sm text-foreground shadow-inner transition-all focus:border-primary/70 focus:outline-none focus:ring-4 focus:ring-primary/20;
-}
-
-label {
-  @apply text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)];
-}
-
-.card {
-  @apply rounded-lg border border-border/30 bg-card text-card-foreground shadow-md;
-}
-
-.card-soft {
-  @apply rounded-lg border border-border/30 bg-card text-card-foreground shadow-sm;
-}
-
-.section-title {
-  @apply text-3xl font-semibold tracking-tight text-foreground;
-}
-
-.section-subtitle {
-  @apply text-sm text-muted-foreground;
-}
-
-.badge {
-  @apply inline-flex items-center gap-1 rounded-full bg-primary/12 px-3 py-1 text-xs font-medium text-primary;
-}
-
-.link-pill {
-  @apply inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-sm font-medium text-[var(--muted-foreground)] transition-all hover:bg-white hover:text-primary;
-}
-
-.grid-card {
-  @apply rounded-lg border border-border/30 bg-card p-5 shadow-sm transition-all hover:shadow-md hover:border-border/50;
-}
-
-.table-soft {
-  @apply w-full overflow-hidden rounded-3xl border border-white/60 bg-white/80 backdrop-blur-xl;
-  box-shadow: var(--shadow-soft);
-}
-
-.table-soft table {
-  @apply w-full;
-}
-
-.table-soft th {
-  @apply bg-white/80 px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)];
-}
-
-.table-soft td {
-  @apply px-4 py-4 text-sm text-foreground;
-}
-
-.table-soft tbody tr:not(:last-child) td {
-  @apply border-b border-white/60;
 }
 
 button {
   cursor: pointer;
+}
+
+/* Stat card accent border */
+.stat-card {
+  @apply relative overflow-hidden rounded-xl border border-border/50 bg-card p-5 shadow-sm transition-shadow hover:shadow-md;
+}
+
+.stat-card::before {
+  content: "";
+  @apply absolute left-0 top-0 h-full w-1 rounded-l-xl;
+  background: hsl(var(--primary));
+}
+
+.stat-card--success::before {
+  background: hsl(var(--success));
+}
+
+.stat-card--warning::before {
+  background: hsl(var(--warning));
+}
+
+.stat-card--destructive::before {
+  background: hsl(var(--destructive));
 }

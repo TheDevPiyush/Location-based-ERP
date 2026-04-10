@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -25,8 +25,8 @@ import type { CurrentUser } from '@/types/user';
 import type { SubjectItem } from '@/types/dashboard';
 import type { AttendanceWindow } from '@/types/window';
 
-// Attendance now requires live location (no test bypass).
-const IS_TEST_MODE = false;
+/** When true: no GPS permission, no geofence — only face match must pass (server must allow test skip). */
+const IS_TEST_MODE = true;
 
 const DURATION_OPTS = [30, 60, 120, 300];
 
@@ -36,11 +36,51 @@ function formatMMSS(total: number) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+/** API returns camelCase (Drizzle); tolerate snake_case. */
+function windowIsActive(w: { isActive?: boolean; is_active?: boolean } | null | undefined): boolean {
+  if (!w) return false;
+  return w.isActive === true || w.is_active === true;
+}
+
+function windowDurationSeconds(w: { duration?: number | null } | null | undefined): number {
+  const d = w?.duration;
+  const n = Number(d);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 30;
+}
+
+function windowStartTimeMs(w: { startTime?: string; start_time?: string } | null | undefined): number | null {
+  const raw = w?.startTime ?? w?.start_time;
+  if (raw == null || raw === '') return null;
+  const t = new Date(raw as string).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/** Remaining seconds for an active window; 0 if inactive or invalid times. */
+function computeWindowRemainingSec(
+  w: { isActive?: boolean; is_active?: boolean; duration?: number | null; startTime?: string; start_time?: string } | null | undefined,
+): number {
+  if (!windowIsActive(w)) return 0;
+  const dur = windowDurationSeconds(w);
+  const startMs = windowStartTimeMs(w);
+  if (startMs == null) return 0;
+  return Math.max(0, dur - Math.floor((Date.now() - startMs) / 1000));
+}
+
 // ─── Scanning overlay ─────────────────────────────────────────────────────────
 type ScanStep = 'idle' | 'camera' | 'face' | 'location' | 'uploading' | 'done' | 'error';
 
-function ScanOverlay({ step, errorMsg }: { step: ScanStep; errorMsg?: string }) {
-  const scanLine  = useRef(new Animated.Value(0)).current;
+function ScanOverlay({
+  step,
+  errorMsg,
+  skipLocationStep,
+}: {
+  step: ScanStep;
+  errorMsg?: string;
+  /** When true, progress pills are face → upload only (test mode). */
+  skipLocationStep?: boolean;
+}) {
+  const scanLine = useRef(new Animated.Value(0)).current;
   const ringScale = useRef(new Animated.Value(1)).current;
   const ringOpacity = useRef(new Animated.Value(0.6)).current;
   const dotOpacity = useRef(new Animated.Value(0)).current;
@@ -65,8 +105,8 @@ function ScanOverlay({ step, errorMsg }: { step: ScanStep; errorMsg?: string }) 
     const anim = Animated.loop(
       Animated.parallel([
         Animated.sequence([
-          Animated.timing(ringScale,   { toValue: 1.4, duration: 900, useNativeDriver: true }),
-          Animated.timing(ringScale,   { toValue: 1,   duration: 900, useNativeDriver: true }),
+          Animated.timing(ringScale, { toValue: 1.4, duration: 900, useNativeDriver: true }),
+          Animated.timing(ringScale, { toValue: 1, duration: 900, useNativeDriver: true }),
         ]),
         Animated.sequence([
           Animated.timing(ringOpacity, { toValue: 0.1, duration: 900, useNativeDriver: true }),
@@ -83,7 +123,7 @@ function ScanOverlay({ step, errorMsg }: { step: ScanStep; errorMsg?: string }) 
     if (step !== 'uploading') return;
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(dotOpacity, { toValue: 1,   duration: 400, useNativeDriver: true }),
+        Animated.timing(dotOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
         Animated.timing(dotOpacity, { toValue: 0.2, duration: 400, useNativeDriver: true }),
       ])
     );
@@ -100,13 +140,13 @@ function ScanOverlay({ step, errorMsg }: { step: ScanStep; errorMsg?: string }) 
   const scanTranslate = scanLine.interpolate({ inputRange: [0, 1], outputRange: [-90, 90] });
 
   const stepLabel: Record<ScanStep, string> = {
-    idle:      '',
-    camera:    'Opening camera…',
-    face:      'Scanning face…',
-    location:  'Getting location…',
+    idle: '',
+    camera: 'Opening camera…',
+    face: 'Scanning face…',
+    location: 'Getting location…',
     uploading: 'Verifying & marking…',
-    done:      'Attendance marked!',
-    error:     errorMsg ?? 'Something went wrong',
+    done: 'Attendance marked!',
+    error: errorMsg ?? 'Something went wrong',
   };
 
   return (
@@ -165,7 +205,7 @@ function ScanOverlay({ step, errorMsg }: { step: ScanStep; errorMsg?: string }) 
           {/* Step label */}
           <Text style={[
             ov.label,
-            step === 'done'  && ov.labelSuccess,
+            step === 'done' && ov.labelSuccess,
             step === 'error' && ov.labelError,
           ]}>
             {stepLabel[step]}
@@ -174,7 +214,10 @@ function ScanOverlay({ step, errorMsg }: { step: ScanStep; errorMsg?: string }) 
           {/* Step pills */}
           {(step === 'face' || step === 'location' || step === 'uploading') && (
             <View style={ov.pills}>
-              {(['face', 'location', 'uploading'] as ScanStep[]).map((s) => (
+              {(skipLocationStep
+                ? (['face', 'uploading'] as ScanStep[])
+                : (['face', 'location', 'uploading'] as ScanStep[])
+              ).map((s) => (
                 <View key={s} style={[ov.pill, step === s && ov.pillActive]} />
               ))}
             </View>
@@ -190,27 +233,28 @@ export default function MarkAttendanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [me, setMe]               = useState<CurrentUser | null>(null);
-  const [subjects, setSubjects]   = useState<SubjectItem[]>([]);
-  const [batches, setBatches]     = useState<Array<{ id: string; name: string | null }>>([]);
+  const [me, setMe] = useState<CurrentUser | null>(null);
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [batches, setBatches] = useState<Array<{ id: string; name: string | null }>>([]);
   const [subjectId, setSubjectId] = useState<string | null>(null);
-  const [batchId, setBatchId]     = useState<string | null>(null);
+  const [batchId, setBatchId] = useState<string | null>(null);
   const [durationSec, setDurationSec] = useState(60);
-  const [windowInfo, setWindowInfo]   = useState<AttendanceWindow | null>(null);
-  const [remainingSec, setRemainingSec] = useState(0);
-  const [loading, setLoading]         = useState(true);
+  const [windowInfo, setWindowInfo] = useState<AttendanceWindow | null>(null); // API may return camelCase fields
+  /** Forces re-render every second while a window is active (countdown). */
+  const [countdownTick, setCountdownTick] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError]             = useState<string | null>(null);
-  const countdownRefresh              = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  const countdownRefresh = useRef(false);
 
   // Scan overlay state
-  const [scanStep, setScanStep]     = useState<ScanStep>('idle');
-  const [scanError, setScanError]   = useState<string>();
+  const [scanStep, setScanStep] = useState<ScanStep>('idle');
+  const [scanError, setScanError] = useState<string>();
 
-  const myBatchId       = (me as any)?.batchId ?? null;
-  const mySubjects      = subjects.filter((s: any) => myBatchId ? (s.batchId ?? s.batch_id) === myBatchId : true);
+  const myBatchId = (me as any)?.batchId ?? null;
+  const mySubjects = subjects.filter((s: any) => myBatchId ? (s.batchId ?? s.batch_id) === myBatchId : true);
   const filteredSubjects = batchId ? subjects.filter((s: any) => (s.batchId ?? s.batch_id) === batchId) : subjects;
-  const isAdmin         = me?.role === 'admin' || me?.role === 'teacher';
+  const isAdmin = me?.role === 'admin' || me?.role === 'teacher';
 
   // ── Load ─────────────────────────────────────────────────────────────────
   const loadInitial = useCallback(async () => {
@@ -282,25 +326,37 @@ export default function MarkAttendanceScreen() {
     catch { setWindowInfo(null); }
   }, [isAdmin, batchId, myBatchId, subjectId]);
 
-  // Countdown timer
+  const remainingSec = useMemo(
+    () => computeWindowRemainingSec(windowInfo),
+    [windowInfo, countdownTick],
+  );
+
+  // Tick every second while window is active so remainingSec uses fresh Date.now() + latest windowInfo
   useEffect(() => {
-    const compute = () => {
-      if (!windowInfo?.is_active) return 0;
-      const dur   = Number(windowInfo.duration ?? 0);
-      const start = windowInfo.start_time ? new Date(windowInfo.start_time).getTime() : NaN;
-      if (!dur || Number.isNaN(start)) return 0;
-      return Math.max(0, dur - Math.floor((Date.now() - start) / 1000));
-    };
-    setRemainingSec(compute());
-    if (!windowInfo?.is_active) return;
-    const t = setInterval(() => {
-      const r = compute();
-      setRemainingSec(r);
-      if (r === 0 && !countdownRefresh.current) { countdownRefresh.current = true; refreshWindow(); }
-      else if (r > 0) countdownRefresh.current = false;
-    }, 1000);
-    return () => clearInterval(t);
-  }, [windowInfo?.id, windowInfo?.is_active, windowInfo?.duration, windowInfo?.start_time, refreshWindow]);
+    if (!windowIsActive(windowInfo)) return;
+    setCountdownTick((n) => n + 1);
+    const id = setInterval(() => setCountdownTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [windowInfo]);
+
+  // When countdown hits zero after having been positive, refresh from server (handles auto-close)
+  const prevRemainingRef = useRef<number | null>(null);
+  useEffect(() => {
+    const prev = prevRemainingRef.current;
+    prevRemainingRef.current = remainingSec;
+    if (!windowIsActive(windowInfo)) {
+      countdownRefresh.current = false;
+      return;
+    }
+    if (prev !== null && prev > 0 && remainingSec === 0) {
+      if (!countdownRefresh.current) {
+        countdownRefresh.current = true;
+        refreshWindow();
+      }
+    } else if (remainingSec > 0) {
+      countdownRefresh.current = false;
+    }
+  }, [remainingSec, windowInfo, refreshWindow]);
 
   const openWindow = useCallback(async () => {
     const batch = isAdmin ? batchId : myBatchId;
@@ -322,7 +378,7 @@ export default function MarkAttendanceScreen() {
 
   // ── Mark attendance ──────────────────────────────────────────────────────
   const markMe = useCallback(async () => {
-    if (!windowInfo?.id || !windowInfo?.is_active) {
+    if (!windowInfo?.id || !windowIsActive(windowInfo)) {
       Alert.alert('Window inactive', 'Check window status and ensure it is active.');
       return;
     }
@@ -353,45 +409,50 @@ export default function MarkAttendanceScreen() {
     setScanStep('face');
     await new Promise((r) => setTimeout(r, 2000)); // let animation play
 
-    // Step 3 — location
+    // Step 3 — location (skipped in test mode; server skips geofence when attendance_test_mode is allowed)
     let location: { latitude: number; longitude: number } | null = null;
-    setScanStep('location');
-    try {
-      const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
-      if (locStatus !== 'granted') {
+    if (!IS_TEST_MODE) {
+      setScanStep('location');
+      try {
+        const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
+        if (locStatus !== 'granted') {
+          setScanStep('error');
+          setScanError('Location permission is required to mark attendance.');
+          setTimeout(() => setScanStep('idle'), 2500);
+          return;
+        }
+        const coords = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        location = {
+          latitude: coords.coords.latitude,
+          longitude: coords.coords.longitude,
+        };
+        console.log('[ATTENDANCE_LOCATION][mobile] sending', {
+          latitude: location.latitude,
+          longitude: location.longitude,
+        });
+      } catch {
         setScanStep('error');
-        setScanError('Location permission is required to mark attendance.');
+        setScanError('Failed to get location. Please try again.');
         setTimeout(() => setScanStep('idle'), 2500);
         return;
       }
-      const coords = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      location = {
-        latitude:  coords.coords.latitude,
-        longitude: coords.coords.longitude,
-      };
-      console.log("[ATTENDANCE_LOCATION][mobile] sending", {
-        latitude: location.latitude,
-        longitude: location.longitude,
-      });
-    } catch {
-      setScanStep('error');
-      setScanError('Failed to get location. Please try again.');
-      setTimeout(() => setScanStep('idle'), 2500);
-      return;
     }
 
-    // Step 4 — upload + verify
+    // Step 4 — upload + verify (face + boundaries in prod; face only in test mode on server)
     setScanStep('uploading');
     setError(null);
     try {
-      console.log("[ATTENDANCE_LOCATION][mobile] payload before markAttendance", {
+      console.log('[ATTENDANCE_MARK][mobile] payload', {
         attendance_window: windowInfo.id,
-        latitude: location?.latitude ?? null,
-        longitude: location?.longitude ?? null,
+        testMode: IS_TEST_MODE,
+        hasLocation: !!location,
       });
-      await apiService.markAttendance(windowInfo.id as any, imageUri, location);
+      await apiService.markAttendance(windowInfo.id as any, imageUri, {
+        location: location ?? undefined,
+        testMode: IS_TEST_MODE,
+      });
       setScanStep('done');
       await new Promise((r) => setTimeout(r, 1800));
       setScanStep('idle');
@@ -407,7 +468,7 @@ export default function MarkAttendanceScreen() {
         setError(msg);
       }, 2500);
     }
-  }, [windowInfo?.id, windowInfo?.is_active, router]);
+  }, [windowInfo, router]);
 
   // ── Render ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -429,7 +490,9 @@ export default function MarkAttendanceScreen() {
   return (
     <View style={styles.screen}>
       {/* Scan overlay modal */}
-      {scanStep !== 'idle' && <ScanOverlay step={scanStep} errorMsg={scanError} />}
+      {scanStep !== 'idle' && (
+        <ScanOverlay step={scanStep} errorMsg={scanError} skipLocationStep={IS_TEST_MODE} />
+      )}
 
       <View style={[styles.headerRow, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
@@ -456,7 +519,9 @@ export default function MarkAttendanceScreen() {
         {IS_TEST_MODE && (
           <View style={styles.testNotice}>
             <Ionicons name="flask-outline" size={16} color={AppColors.status.warning} />
-            <Text style={styles.testNoticeText}>Test mode — location verification disabled</Text>
+            <Text style={styles.testNoticeText}>
+              Test mode — GPS and college boundaries skipped; face still verified on server
+            </Text>
           </View>
         )}
 
@@ -556,13 +621,13 @@ export default function MarkAttendanceScreen() {
             <View style={styles.windowStatus}>
               <View style={styles.windowStatusRow}>
                 <Text style={styles.windowLabel}>Status</Text>
-                <View style={[styles.badge, windowInfo.is_active ? styles.badgeActive : styles.badgeInactive]}>
-                  <Text style={[styles.badgeText, windowInfo.is_active && styles.badgeTextActive]}>
-                    {windowInfo.is_active ? 'Active' : 'Inactive'}
+                <View style={[styles.badge, windowIsActive(windowInfo) ? styles.badgeActive : styles.badgeInactive]}>
+                  <Text style={[styles.badgeText, windowIsActive(windowInfo) && styles.badgeTextActive]}>
+                    {windowIsActive(windowInfo) ? 'Active' : 'Inactive'}
                   </Text>
                 </View>
               </View>
-              {windowInfo.is_active && (
+              {windowIsActive(windowInfo) && (
                 <View style={styles.windowStatusRow}>
                   <Text style={styles.windowLabel}>Time left</Text>
                   <Text style={[styles.windowValue, remainingSec < 10 && styles.windowValueWarning]}>
@@ -583,7 +648,7 @@ export default function MarkAttendanceScreen() {
           )}
 
           {/* Mark button — students only, window must be active */}
-          {!isAdmin && windowInfo?.is_active && (
+          {!isAdmin && windowIsActive(windowInfo) && (
             <TouchableOpacity style={styles.markBtn} onPress={markMe} activeOpacity={0.85}>
               <Ionicons name="camera-outline" size={22} color="#fff" />
               <Text style={styles.markBtnText}>Scan Face & Mark Attendance</Text>
@@ -629,10 +694,10 @@ const ov = StyleSheet.create({
     borderColor: AppColors.primary[600],
     borderWidth: 3,
   },
-  tl: { top: 0,    left: 0,    borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 6 },
-  tr: { top: 0,    right: 0,   borderLeftWidth: 0,  borderBottomWidth: 0, borderTopRightRadius: 6 },
-  bl: { bottom: 0, left: 0,    borderRightWidth: 0, borderTopWidth: 0,    borderBottomLeftRadius: 6 },
-  br: { bottom: 0, right: 0,   borderLeftWidth: 0,  borderTopWidth: 0,    borderBottomRightRadius: 6 },
+  tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 6 },
+  tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 6 },
+  bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 6 },
+  br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 6 },
   scanLine: {
     position: 'absolute',
     left: 0, right: 0,
@@ -689,7 +754,7 @@ const ov = StyleSheet.create({
     textAlign: 'center',
   },
   labelSuccess: { color: AppColors.status.success },
-  labelError:   { color: AppColors.status.error },
+  labelError: { color: AppColors.status.error },
   pills: { flexDirection: 'row', gap: 8 },
   pill: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)' },
   pillActive: { backgroundColor: AppColors.primary[600], width: 24 },
@@ -697,10 +762,10 @@ const ov = StyleSheet.create({
 
 // ─── Screen styles ────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  screen:     { flex: 1, backgroundColor: AppColors.background.primary },
-  container:  { flex: 1 },
-  content:    { padding: 20, paddingBottom: 40 },
-  centered:   { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  screen: { flex: 1, backgroundColor: AppColors.background.primary },
+  container: { flex: 1 },
+  content: { padding: 20, paddingBottom: 40 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   loadingText: { marginTop: 12, fontSize: 14, fontFamily: Fonts.Helix.Medium, color: AppColors.text.secondary },
 
   headerRow: {
@@ -708,7 +773,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingBottom: 12,
     borderBottomWidth: 0.5, borderBottomColor: AppColors.border.light,
   },
-  backBtn:     { width: 40, alignItems: 'flex-start' },
+  backBtn: { width: 40, alignItems: 'flex-start' },
   headerTitle: { fontSize: 18, fontFamily: Fonts.Helix.SemiBold, color: AppColors.text.primary },
   testBadge: {
     paddingHorizontal: 8, paddingVertical: 3,
@@ -733,7 +798,7 @@ const styles = StyleSheet.create({
   },
   errorText: { flex: 1, fontSize: 14, fontFamily: Fonts.Helix.Medium, color: AppColors.status.error },
 
-  card:      { backgroundColor: AppColors.surface.card, borderRadius: 16, padding: 20, marginBottom: 16 },
+  card: { backgroundColor: AppColors.surface.card, borderRadius: 16, padding: 20, marginBottom: 16 },
   cardTitle: { fontSize: 15, fontFamily: Fonts.Helix.SemiBold, color: AppColors.text.primary, marginBottom: 12 },
 
   verticalList: { gap: 8 },
@@ -742,15 +807,15 @@ const styles = StyleSheet.create({
     paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12,
     backgroundColor: AppColors.background.secondary,
   },
-  listRowActive:    { backgroundColor: AppColors.primary[50] },
-  listRowText:      { fontSize: 15, fontFamily: Fonts.Helix.Medium, color: AppColors.text.primary, flex: 1 },
+  listRowActive: { backgroundColor: AppColors.primary[50] },
+  listRowText: { fontSize: 15, fontFamily: Fonts.Helix.Medium, color: AppColors.text.primary, flex: 1 },
   listRowTextActive: { fontFamily: Fonts.Helix.SemiBold, color: AppColors.primary[600] },
   muted: { fontSize: 14, fontFamily: Fonts.Helix.Medium, color: AppColors.text.tertiary },
 
   durationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  durChip:     { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, backgroundColor: AppColors.background.secondary },
-  chipActive:  { backgroundColor: AppColors.primary[600] },
-  chipText:    { fontSize: 14, fontFamily: Fonts.Helix.Medium, color: AppColors.text.primary },
+  durChip: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, backgroundColor: AppColors.background.secondary },
+  chipActive: { backgroundColor: AppColors.primary[600] },
+  chipText: { fontSize: 14, fontFamily: Fonts.Helix.Medium, color: AppColors.text.primary },
   chipTextActive: { color: AppColors.text.inverse },
 
   windowRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
@@ -763,20 +828,20 @@ const styles = StyleSheet.create({
   primaryBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, backgroundColor: AppColors.primary[600] },
   primaryBtnText: { fontSize: 15, fontFamily: Fonts.Helix.SemiBold, color: AppColors.text.inverse },
 
-  windowStatus:    { paddingTop: 16, borderTopWidth: 1, borderTopColor: AppColors.border.light },
+  windowStatus: { paddingTop: 16, borderTopWidth: 1, borderTopColor: AppColors.border.light },
   windowStatusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  windowLabel:     { fontSize: 14, fontFamily: Fonts.Helix.Medium, color: AppColors.text.secondary },
-  windowValue:     { fontSize: 14, fontFamily: Fonts.Helix.SemiBold, color: AppColors.text.primary },
+  windowLabel: { fontSize: 14, fontFamily: Fonts.Helix.Medium, color: AppColors.text.secondary },
+  windowValue: { fontSize: 14, fontFamily: Fonts.Helix.SemiBold, color: AppColors.text.primary },
   windowValueWarning: { color: AppColors.status.error },
   windowValueMono: { fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', color: AppColors.text.secondary },
 
-  badge:          { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: AppColors.background.secondary },
-  badgeActive:    { backgroundColor: AppColors.status.success + '25' },
-  badgeInactive:  {},
-  badgeText:      { fontSize: 13, fontFamily: Fonts.Helix.SemiBold, color: AppColors.text.secondary },
+  badge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: AppColors.background.secondary },
+  badgeActive: { backgroundColor: AppColors.status.success + '25' },
+  badgeInactive: {},
+  badgeText: { fontSize: 13, fontFamily: Fonts.Helix.SemiBold, color: AppColors.text.secondary },
   badgeTextActive: { color: AppColors.status.success },
 
-  windowEmpty:     { alignItems: 'center', justifyContent: 'center', paddingVertical: 24, gap: 8 },
+  windowEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 24, gap: 8 },
   windowEmptyText: { fontSize: 14, fontFamily: Fonts.Helix.Medium, color: AppColors.text.tertiary },
 
   markBtn: {
@@ -784,7 +849,7 @@ const styles = StyleSheet.create({
     marginTop: 20, paddingVertical: 16, borderRadius: 12,
     backgroundColor: AppColors.primary[600],
     ...Platform.select({
-      ios:     { shadowColor: AppColors.primary[600], shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
+      ios: { shadowColor: AppColors.primary[600], shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
       android: { elevation: 6 },
     }),
   },

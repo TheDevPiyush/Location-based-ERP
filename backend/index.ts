@@ -11,11 +11,13 @@ import courseRouter from './src/routes/course.route';
 import subjectRouter from './src/routes/subject.route';
 import { analyticsRouter } from './src/routes/analytics.router';
 import { announcementRouter } from './src/routes/annoucement.route';
-
+import cors from 'cors'
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+app.use(cors({ origin: "*" }));
 
 app.use(express.json());
 

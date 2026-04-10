@@ -1,51 +1,79 @@
 "use client";
 
-import { login, fetchMe, setCurrentUser } from "@/lib/api";
+import { sendLoginCode, verifyLoginCode, fetchMe, setCurrentUser } from "@/lib/api";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import { Button } from "@/app/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
-import { Badge } from "@/app/components/ui/badge";
 import { Spinner } from "@/app/components/ui/spinner";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ShieldCheck, ArrowLeft, Mail } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [step, setStep] = useState<"email" | "otp">("email");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onSubmit = async (e: React.FormEvent) => {
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      await login(email, password);
+      await sendLoginCode(email);
+      setStep("otp");
+    } catch (err: any) {
+      setError(err?.message || "Failed to send verification code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      await verifyLoginCode(email, code);
       const me = await fetchMe();
       setCurrentUser(me);
       router.replace("/dashboard");
     } catch (err: any) {
-      setError(err?.message || "Invalid credentials");
+      setError(err?.message || "Invalid verification code");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="mx-auto flex min-h-[70vh] w-full max-w-lg flex-col items-center justify-center text-center">
-      <Card className="w-full">
-        <CardHeader className="space-y-3">
-          <CardTitle className="text-4xl">Sign In</CardTitle>
-          <CardDescription>
-            Sign in to manage your attendance, subjects, and academic information.
-          </CardDescription>
+    <div className="mx-auto flex min-h-[80vh] w-full max-w-md flex-col items-center justify-center">
+      <Card className="w-full shadow-lg">
+        <CardHeader className="space-y-4 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10">
+            <ShieldCheck className="h-7 w-7 text-primary" />
+          </div>
+          <div>
+            <CardTitle className="text-2xl">Admin Login</CardTitle>
+            <CardDescription className="mt-1.5">
+              {step === "email"
+                ? "Enter your email to receive a verification code"
+                : `We sent a code to ${email}`}
+            </CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSubmit} className="space-y-5 text-left">
-            <div className="space-y-4">
+          {step === "email" ? (
+            <form onSubmit={handleSendCode} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -54,41 +82,89 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="you@cimage.edu"
+                  placeholder="admin@cimage.edu"
                   autoComplete="email"
                 />
               </div>
+
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <Button className="w-full gap-2" disabled={loading} type="submit">
+                {loading ? (
+                  <>
+                    <Spinner size="sm" />
+                    Sending code...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4" />
+                    Send Verification Code
+                  </>
+                )}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyCode} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="code">Verification Code</Label>
                 <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
                   required
-                  placeholder="••••••••"
-                  autoComplete="current-password"
+                  placeholder="Enter the code from your email"
+                  autoComplete="one-time-code"
+                  autoFocus
                 />
               </div>
-            </div>
 
-            {error ? (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            <Button className="mt-6 w-full" disabled={loading} type="submit">
-              {loading ? (
-                <>
-                  <Spinner size="sm" className="mr-2" />
-                  Signing in...
-                </>
-              ) : (
-                "Enter the portal"
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
               )}
-            </Button>
-          </form>
+
+              <Button className="w-full" disabled={loading} type="submit">
+                {loading ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    Verifying...
+                  </>
+                ) : (
+                  "Verify & Sign In"
+                )}
+              </Button>
+
+              <div className="flex items-center justify-between text-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep("email");
+                    setCode("");
+                    setError(null);
+                  }}
+                  className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Change email
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendCode}
+                  disabled={loading}
+                  className="text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                >
+                  Resend code
+                </button>
+              </div>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>

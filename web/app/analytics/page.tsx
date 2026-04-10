@@ -9,16 +9,34 @@ import {
   fetchStudentsByBatch,
   fetchAttendanceAnalytics,
   fetchMonthlyPercentage,
-  fetchStudentCalendar,
 } from "@/lib/api";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/app/components/ui/card";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Label } from "@/app/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/app/components/ui/select";
 import { Input } from "@/app/components/ui/input";
 import { Spinner } from "@/app/components/ui/spinner";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/app/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/app/components/ui/table";
 import { useToast } from "@/app/components/ui/use-toast";
 import {
   BarChart,
@@ -35,81 +53,81 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import {
+  BarChart3,
+  TrendingUp,
+  Users,
+  Calendar,
+  Filter,
+  RefreshCw,
+} from "lucide-react";
 
-type Batch = { id: number; name: string };
-type Subject = { id: number; name: string; batch: number };
-type Student = { id: number; name: string | null; email: string | null; role: string; batch?: any };
+type Batch = { id: string; name: string };
+type Subject = { id: string; name: string; batchId: string };
+type Student = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  role: string;
+};
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
+const CHART_COLORS = [
+  "hsl(221, 83%, 53%)",
+  "hsl(142, 76%, 36%)",
+  "hsl(38, 92%, 50%)",
+  "hsl(0, 84%, 60%)",
+  "hsl(262, 83%, 58%)",
+];
 
 export default function AnalyticsPage() {
   const router = useRouter();
-  const [me, setMe] = useState<any>(null);
+  const { toast } = useToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
-  const [calendarLoading, setCalendarLoading] = useState(false);
-  const { toast } = useToast();
 
   // Filters
-  const [selectedBatch, setSelectedBatch] = useState<number | undefined>();
-  const [selectedSubject, setSelectedSubject] = useState<number | undefined>();
-  const [selectedStudent, setSelectedStudent] = useState<number | undefined>();
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
-  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedBatch, setSelectedBatch] = useState<string | undefined>();
+  const [selectedSubject, setSelectedSubject] = useState<string | undefined>();
+  const [selectedStudent, setSelectedStudent] = useState<string | undefined>();
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("");
 
-  // Analytics data
+  // Data
   const [dailyData, setDailyData] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [monthlyPercentage, setMonthlyPercentage] = useState<any>(null);
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
-  const [calendarData, setCalendarData] = useState<any>(null);
 
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
-        const [meRes, subs, bats] = await Promise.all([
+        const [, subs, bats] = await Promise.all([
           fetchMe(),
           fetchSubjects(),
           fetchBatches(),
         ]);
-        setMe(meRes);
         setSubjects(subs as any);
         setBatches(bats as any);
 
-        // Set default dates (last 30 days) - only for admin/teacher
         const today = new Date();
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(today.getDate() - 30);
         setEndDate(today.toISOString().split("T")[0]);
         setStartDate(thirtyDaysAgo.toISOString().split("T")[0]);
-
-        // Set default month (current month)
-        const currentMonth = today.toISOString().slice(0, 7);
-        setSelectedMonth(currentMonth);
-
-        // If student, set their batch and student ID
-        if (meRes?.role === "student" && meRes?.batch?.id) {
-          setSelectedBatch(meRes.batch.id);
-          setSelectedStudent(meRes.id);
-        }
-      } catch (e) {
-        toast({
-          title: "Error",
-          description: "Failed to load data",
-          variant: "destructive",
-        });
+        setSelectedMonth(today.toISOString().slice(0, 7));
+      } catch {
         router.replace("/login");
       } finally {
         setLoading(false);
       }
     })();
-  }, [router, toast]);
+  }, [router]);
 
   // Fetch students when batch changes
   useEffect(() => {
@@ -127,61 +145,17 @@ export default function AnalyticsPage() {
     })();
   }, [selectedBatch]);
 
-  // Filter subjects by batch
   const filteredSubjects = useMemo(
-    () => subjects.filter((s) => (selectedBatch ? s.batch === selectedBatch : true)),
+    () =>
+      subjects.filter((s) => (selectedBatch ? s.batchId === selectedBatch : true)),
     [subjects, selectedBatch]
   );
 
-  const isStudent = me?.role === "student";
-  const isAdmin = me?.role === "admin" || me?.role === "teacher";
-
-  // Load calendar for students
-  useEffect(() => {
-    if (isStudent && selectedMonth) {
-      loadCalendar();
-    }
-  }, [selectedMonth, isStudent]);
-
-  const loadCalendar = async () => {
-    if (!selectedMonth) return;
-
-    setCalendarLoading(true);
-    try {
-      const params: any = {
-        month: selectedMonth,
-      };
-      if (selectedBatch) params.batch_id = selectedBatch;
-
-      const data = await fetchStudentCalendar(params);
-      setCalendarData(data);
-    } catch (e: any) {
-      toast({
-        title: "Error",
-        description: e.message || "Failed to load calendar",
-        variant: "destructive",
-      });
-    } finally {
-      setCalendarLoading(false);
-    }
-  };
-
   const loadAnalytics = async () => {
-    if (!startDate || !endDate) {
-      toast({
-        title: "Error",
-        description: "Please select start and end dates",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    if (!startDate || !endDate) return;
     setAnalyticsLoading(true);
     try {
-      const params: any = {
-        start_date: startDate,
-        end_date: endDate,
-      };
+      const params: any = { start_date: startDate, end_date: endDate };
       if (selectedBatch) params.batch_id = selectedBatch;
       if (selectedSubject) params.subject_id = selectedSubject;
       if (selectedStudent) params.student_id = selectedStudent;
@@ -203,20 +177,10 @@ export default function AnalyticsPage() {
   };
 
   const loadMonthlyData = async () => {
-    if (!selectedMonth) {
-      toast({
-        title: "Error",
-        description: "Please select a month",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    if (!selectedMonth) return;
     setMonthlyLoading(true);
     try {
-      const params: any = {
-        month: selectedMonth,
-      };
+      const params: any = { month: selectedMonth };
       if (selectedBatch) params.batch_id = selectedBatch;
       if (selectedSubject) params.subject_id = selectedSubject;
       if (selectedStudent) params.student_id = selectedStudent;
@@ -234,166 +198,35 @@ export default function AnalyticsPage() {
     }
   };
 
-  // Auto-load on filter change (only for admin/teacher)
+  // Auto-load on filter change
   useEffect(() => {
-    if (!isStudent && startDate && endDate) {
-      loadAnalytics();
-    }
-  }, [startDate, endDate, selectedBatch, selectedSubject, selectedStudent, selectedMonth]);
+    if (startDate && endDate) loadAnalytics();
+  }, [
+    startDate,
+    endDate,
+    selectedBatch,
+    selectedSubject,
+    selectedStudent,
+    selectedMonth,
+  ]);
 
   useEffect(() => {
-    if (!isStudent && selectedMonth) {
-      loadMonthlyData();
-    }
+    if (selectedMonth) loadMonthlyData();
   }, [selectedMonth, selectedBatch, selectedSubject, selectedStudent]);
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="py-20 flex items-center justify-center">
-          <Spinner size="lg" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Student Calendar View
-  if (isStudent) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-3xl">My Attendance Calendar</CardTitle>
-            <CardDescription>
-              View your attendance for each subject by date. P = Present, A = Absent, empty = No class
-            </CardDescription>
-          </CardHeader>
-        </Card>
-
-        {/* Month Selector */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Select Month</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 items-end">
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="month">Month</Label>
-                <Input
-                  id="month"
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                />
-              </div>
-              <Button onClick={loadCalendar} disabled={calendarLoading}>
-                {calendarLoading ? <Spinner className="mr-2" /> : null}
-                Refresh
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Calendar Table */}
-        {calendarData && (
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {new Date(calendarData.year, calendarData.month_number - 1).toLocaleDateString("en-US", {
-                  month: "long",
-                  year: "numeric",
-                })}
-              </CardTitle>
-              <CardDescription>Batch: {calendarData.batch.name}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {calendarLoading ? (
-                <div className="flex items-center justify-center py-10">
-                  <Spinner size="lg" />
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="sticky left-0 bg-background z-10 min-w-[200px]">Subject</TableHead>
-                        {Array.from({ length: calendarData.days_in_month }, (_, i) => i + 1).map((day) => (
-                          <TableHead key={day} className="text-center min-w-[40px]">
-                            {day}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {calendarData.calendar.map((subjectRow: any) => (
-                        <TableRow key={subjectRow.subject.id}>
-                          <TableCell className="font-medium sticky left-0 bg-background z-10">
-                            {subjectRow.subject.name}
-                          </TableCell>
-                          {Array.from({ length: calendarData.days_in_month }, (_, i) => {
-                            const day = i + 1;
-                            const date = new Date(calendarData.year, calendarData.month_number - 1, day);
-                            const dateKey = date.toISOString().split("T")[0];
-                            const status = subjectRow.dates[dateKey];
-
-                            return (
-                              <TableCell key={day} className="text-center p-2">
-                                {status === "P" ? (
-                                  <Badge className="bg-green-500 hover:bg-green-600 text-white">P</Badge>
-                                ) : status === "A" ? (
-                                  <Badge className="bg-red-500 hover:bg-red-600 text-white">A</Badge>
-                                ) : (
-                                  <span className="text-muted-foreground">-</span>
-                                )}
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Summary Statistics */}
-        {calendarData && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {calendarData.calendar.map((subjectRow: any) => {
-              const dates = Object.values(subjectRow.dates);
-              const present = dates.filter((d: any) => d === "P").length;
-              const absent = dates.filter((d: any) => d === "A").length;
-              const total = present + absent;
-              const percentage = total > 0 ? ((present / total) * 100).toFixed(1) : "0.0";
-
-              return (
-                <Card key={subjectRow.subject.id}>
-                  <CardHeader className="pb-2">
-                    <CardDescription className="truncate">{subjectRow.subject.name}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-1">
-                      <div className="text-2xl font-bold">{percentage}%</div>
-                      <div className="text-sm text-muted-foreground">
-                        {present} / {total} classes
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Spinner size="lg" />
       </div>
     );
   }
 
-  // Admin/Teacher View
-  // Prepare chart data
   const chartData = dailyData.map((day) => ({
-    date: new Date(day.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    date: new Date(day.date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
     present: day.present,
     absent: day.absent,
     total: day.total,
@@ -407,40 +240,45 @@ export default function AnalyticsPage() {
     : [];
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-3xl">Attendance Analytics</CardTitle>
-          <CardDescription>
-            View detailed attendance statistics with daily breakdowns and monthly percentages
-          </CardDescription>
-        </CardHeader>
-      </Card>
+    <div className="space-y-8">
+      {/* Page Header */}
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">
+          Attendance Analytics
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Detailed attendance statistics with daily breakdowns and monthly
+          reports.
+        </p>
+      </div>
 
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Filter className="h-4 w-4 text-primary" />
+            Filters
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2">
-              <Label htmlFor="batch-filter">Batch</Label>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Batch</Label>
               <Select
-                value={selectedBatch?.toString() || ""}
-                onValueChange={(value: string) => {
-                  setSelectedBatch(value ? Number(value) : undefined);
+                value={selectedBatch || "all"}
+                onValueChange={(v) => {
+                  setSelectedBatch(v === "all" ? undefined : v);
                   setSelectedSubject(undefined);
                   setSelectedStudent(undefined);
                 }}
               >
-                <SelectTrigger id="batch-filter">
+                <SelectTrigger>
                   <SelectValue placeholder="All batches" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All batches</SelectItem>
+                  <SelectItem value="all">All batches</SelectItem>
                   {batches.map((b) => (
-                    <SelectItem key={b.id} value={b.id.toString()}>
+                    <SelectItem key={b.id} value={b.id}>
                       {b.name}
                     </SelectItem>
                   ))}
@@ -448,20 +286,22 @@ export default function AnalyticsPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="subject-filter">Subject</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Subject</Label>
               <Select
-                value={selectedSubject?.toString() || ""}
-                onValueChange={(value: string) => setSelectedSubject(value ? Number(value) : undefined)}
+                value={selectedSubject || "all"}
+                onValueChange={(v) =>
+                  setSelectedSubject(v === "all" ? undefined : v)
+                }
                 disabled={!selectedBatch}
               >
-                <SelectTrigger id="subject-filter">
+                <SelectTrigger>
                   <SelectValue placeholder="All subjects" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All subjects</SelectItem>
+                  <SelectItem value="all">All subjects</SelectItem>
                   {filteredSubjects.map((s) => (
-                    <SelectItem key={s.id} value={s.id.toString()}>
+                    <SelectItem key={s.id} value={s.id}>
                       {s.name}
                     </SelectItem>
                   ))}
@@ -469,20 +309,22 @@ export default function AnalyticsPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="student-filter">Student</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Student</Label>
               <Select
-                value={selectedStudent?.toString() || ""}
-                onValueChange={(value: string) => setSelectedStudent(value ? Number(value) : undefined)}
+                value={selectedStudent || "all"}
+                onValueChange={(v) =>
+                  setSelectedStudent(v === "all" ? undefined : v)
+                }
                 disabled={!selectedBatch}
               >
-                <SelectTrigger id="student-filter">
+                <SelectTrigger>
                   <SelectValue placeholder="All students" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All students</SelectItem>
+                  <SelectItem value="all">All students</SelectItem>
                   {students.map((s) => (
-                    <SelectItem key={s.id} value={s.id.toString()}>
+                    <SelectItem key={s.id} value={s.id}>
                       {s.name || s.email || `Student #${s.id}`}
                     </SelectItem>
                   ))}
@@ -490,30 +332,27 @@ export default function AnalyticsPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="start-date">Start Date</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Start Date</Label>
               <Input
-                id="start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="end-date">End Date</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">End Date</Label>
               <Input
-                id="end-date"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="month">Month (for monthly %)</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Month</Label>
               <Input
-                id="month"
                 type="month"
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
@@ -522,8 +361,17 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="mt-4">
-            <Button onClick={loadAnalytics} disabled={analyticsLoading}>
-              {analyticsLoading ? <Spinner className="mr-2" /> : null}
+            <Button
+              size="sm"
+              onClick={loadAnalytics}
+              disabled={analyticsLoading}
+              className="gap-2"
+            >
+              {analyticsLoading ? (
+                <Spinner size="sm" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
               Refresh Analytics
             </Button>
           </div>
@@ -533,67 +381,94 @@ export default function AnalyticsPage() {
       {/* Summary Cards */}
       {summary && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Present</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-green-600">{summary.total_present}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Absent</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-red-600">{summary.total_absent}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Classes</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{summary.total_classes || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Overall Percentage</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-primary">{summary.overall_percentage}%</div>
-            </CardContent>
-          </Card>
+          <div className="stat-card stat-card--success">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">
+                Total Present
+              </p>
+              <Users className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="mt-2 text-3xl font-bold text-green-600">
+              {summary.total_present}
+            </p>
+          </div>
+          <div className="stat-card stat-card--destructive">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">
+                Total Absent
+              </p>
+              <Users className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="mt-2 text-3xl font-bold text-red-600">
+              {summary.total_absent}
+            </p>
+          </div>
+          <div className="stat-card">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">
+                Total Classes
+              </p>
+              <Calendar className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="mt-2 text-3xl font-bold">
+              {summary.total_classes || 0}
+            </p>
+          </div>
+          <div className="stat-card stat-card--warning">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">
+                Overall Rate
+              </p>
+              <TrendingUp className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+            <p className="mt-2 text-3xl font-bold text-primary">
+              {summary.overall_percentage}%
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Monthly Percentage Card */}
+      {/* Monthly Overview */}
       {monthlyPercentage && (
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Percentage - {monthlyPercentage.month}</CardTitle>
+            <CardTitle className="text-base">
+              Monthly Overview &mdash; {monthlyPercentage.month}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-6 sm:grid-cols-4">
               <div>
-                <div className="text-sm text-muted-foreground">Total Classes</div>
-                <div className="text-2xl font-bold">{monthlyPercentage.total_classes}</div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Total Classes
+                </p>
+                <p className="mt-1 text-2xl font-bold">
+                  {monthlyPercentage.total_classes}
+                </p>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Present</div>
-                <div className="text-2xl font-bold text-green-600">{monthlyPercentage.present_count}</div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Present
+                </p>
+                <p className="mt-1 text-2xl font-bold text-green-600">
+                  {monthlyPercentage.present_count}
+                </p>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Absent</div>
-                <div className="text-2xl font-bold text-red-600">{monthlyPercentage.absent_count}</div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Absent
+                </p>
+                <p className="mt-1 text-2xl font-bold text-red-600">
+                  {monthlyPercentage.absent_count}
+                </p>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Percentage</div>
-                <div className="text-2xl font-bold text-primary">{monthlyPercentage.percentage}%</div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Rate
+                </p>
+                <p className="mt-1 text-2xl font-bold text-primary">
+                  {monthlyPercentage.percentage}%
+                </p>
               </div>
             </div>
           </CardContent>
@@ -602,35 +477,54 @@ export default function AnalyticsPage() {
 
       {/* Charts */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Daily Attendance Bar Chart */}
         {chartData.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Daily Attendance</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BarChart3 className="h-4 w-4 text-primary" />
+                Daily Attendance
+              </CardTitle>
               <CardDescription>Present vs Absent by day</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="hsl(var(--border))"
+                  />
+                  <XAxis dataKey="date" fontSize={12} />
+                  <YAxis fontSize={12} />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: "0.5rem",
+                      border: "1px solid hsl(var(--border))",
+                    }}
+                  />
                   <Legend />
-                  <Bar dataKey="present" fill="#00C49F" name="Present" />
-                  <Bar dataKey="absent" fill="#FF8042" name="Absent" />
+                  <Bar
+                    dataKey="present"
+                    fill="hsl(142, 76%, 36%)"
+                    name="Present"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="absent"
+                    fill="hsl(0, 84%, 60%)"
+                    name="Absent"
+                    radius={[4, 4, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
         )}
 
-        {/* Pie Chart */}
-        {pieData.length > 0 && (
+        {pieData.length > 0 && pieData.some((d) => d.value > 0) && (
           <Card>
             <CardHeader>
-              <CardTitle>Overall Distribution</CardTitle>
-              <CardDescription>Present vs Absent</CardDescription>
+              <CardTitle className="text-base">Overall Distribution</CardTitle>
+              <CardDescription>Present vs Absent ratio</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -640,17 +534,20 @@ export default function AnalyticsPage() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={(entry: any) => {
-                      const name = entry.name || "";
-                      const percent = entry.percent || 0;
-                      return `${name}: ${(percent * 100).toFixed(0)}%`;
-                    }}
-                    outerRadius={80}
+                    label={(entry: any) =>
+                      `${entry.name}: ${(entry.percent * 100).toFixed(0)}%`
+                    }
+                    outerRadius={100}
+                    innerRadius={50}
                     fill="#8884d8"
                     dataKey="value"
+                    strokeWidth={2}
                   >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    {pieData.map((_, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={CHART_COLORS[index % CHART_COLORS.length]}
+                      />
                     ))}
                   </Pie>
                   <Tooltip />
@@ -660,23 +557,49 @@ export default function AnalyticsPage() {
           </Card>
         )}
 
-        {/* Line Chart */}
         {chartData.length > 0 && (
-          <Card>
+          <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Attendance Trend</CardTitle>
-              <CardDescription>Daily attendance over time</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                Attendance Trend
+              </CardTitle>
+              <CardDescription>
+                Daily attendance pattern over the selected period
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="hsl(var(--border))"
+                  />
+                  <XAxis dataKey="date" fontSize={12} />
+                  <YAxis fontSize={12} />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: "0.5rem",
+                      border: "1px solid hsl(var(--border))",
+                    }}
+                  />
                   <Legend />
-                  <Line type="monotone" dataKey="present" stroke="#00C49F" name="Present" />
-                  <Line type="monotone" dataKey="absent" stroke="#FF8042" name="Absent" />
+                  <Line
+                    type="monotone"
+                    dataKey="present"
+                    stroke="hsl(142, 76%, 36%)"
+                    name="Present"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="absent"
+                    stroke="hsl(0, 84%, 60%)"
+                    name="Absent"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
@@ -684,12 +607,14 @@ export default function AnalyticsPage() {
         )}
       </div>
 
-      {/* Daily Attendance Table */}
+      {/* Daily Table */}
       {dailyData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Daily Attendance Details</CardTitle>
-            <CardDescription>Detailed breakdown by date</CardDescription>
+            <CardTitle className="text-base">Daily Breakdown</CardTitle>
+            <CardDescription>
+              Attendance details for each day in the selected range
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -700,36 +625,55 @@ export default function AnalyticsPage() {
                     <TableHead>Present</TableHead>
                     <TableHead>Absent</TableHead>
                     <TableHead>Total Classes</TableHead>
-                    <TableHead>Percentage</TableHead>
+                    <TableHead>Rate</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {dailyData.map((day) => {
-                    const total = day.present + day.absent;
-                    const totalClasses = day.total_classes || total;
-                    const percentage = totalClasses > 0 ? ((day.present / totalClasses) * 100).toFixed(2) : "0.00";
+                    const total =
+                      day.total_classes || day.present + day.absent;
+                    const pct =
+                      total > 0
+                        ? ((day.present / total) * 100).toFixed(1)
+                        : "0.0";
                     return (
                       <TableRow key={day.date}>
                         <TableCell>
                           {new Date(day.date).toLocaleDateString("en-US", {
                             year: "numeric",
-                            month: "long",
+                            month: "short",
                             day: "numeric",
                           })}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-green-50 text-green-700">
+                          <Badge
+                            variant="outline"
+                            className="bg-green-50 text-green-700 border-green-200"
+                          >
                             {day.present}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-red-50 text-red-700">
+                          <Badge
+                            variant="outline"
+                            className="bg-red-50 text-red-700 border-red-200"
+                          >
                             {day.absent}
                           </Badge>
                         </TableCell>
-                        <TableCell>{totalClasses}</TableCell>
+                        <TableCell>{total}</TableCell>
                         <TableCell>
-                          <Badge variant="secondary">{percentage}%</Badge>
+                          <span
+                            className={`text-sm font-semibold ${
+                              Number(pct) >= 75
+                                ? "text-green-600"
+                                : Number(pct) >= 50
+                                  ? "text-amber-600"
+                                  : "text-red-600"
+                            }`}
+                          >
+                            {pct}%
+                          </span>
                         </TableCell>
                       </TableRow>
                     );
@@ -745,12 +689,17 @@ export default function AnalyticsPage() {
       {monthlyData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Percentage by Batch, Subject & Student</CardTitle>
-            <CardDescription>Detailed breakdown for {selectedMonth}</CardDescription>
+            <CardTitle className="text-base">
+              Monthly Report &mdash; Per Student
+            </CardTitle>
+            <CardDescription>
+              Detailed breakdown by batch, subject, and student for{" "}
+              {selectedMonth}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {monthlyLoading ? (
-              <div className="flex items-center justify-center py-10">
+              <div className="flex items-center justify-center py-8">
                 <Spinner size="lg" />
               </div>
             ) : (
@@ -763,23 +712,35 @@ export default function AnalyticsPage() {
                       <TableHead>Student</TableHead>
                       <TableHead>Present</TableHead>
                       <TableHead>Absent</TableHead>
-                      <TableHead>Total Classes</TableHead>
-                      <TableHead>Percentage</TableHead>
+                      <TableHead>Classes</TableHead>
+                      <TableHead>Rate</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {monthlyData.map((item, idx) => (
                       <TableRow key={idx}>
-                        <TableCell className="font-medium">{item.batch.name}</TableCell>
+                        <TableCell className="font-medium">
+                          {item.batch.name}
+                        </TableCell>
                         <TableCell>{item.subject.name}</TableCell>
-                        <TableCell>{item.student.name || item.student.email || `#${item.student.id}`}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-green-50 text-green-700">
+                          {item?.student?.name ||
+                            item?.student?.email ||
+                            `#${item.student?.id}`}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className="bg-green-50 text-green-700 border-green-200"
+                          >
                             {item.statistics.present}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-red-50 text-red-700">
+                          <Badge
+                            variant="outline"
+                            className="bg-red-50 text-red-700 border-red-200"
+                          >
                             {item.statistics.absent}
                           </Badge>
                         </TableCell>
@@ -791,8 +752,8 @@ export default function AnalyticsPage() {
                               item.statistics.percentage >= 75
                                 ? "bg-green-100 text-green-800"
                                 : item.statistics.percentage >= 50
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-red-100 text-red-800"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-red-100 text-red-800"
                             }
                           >
                             {item.statistics.percentage}%
@@ -808,10 +769,15 @@ export default function AnalyticsPage() {
         </Card>
       )}
 
+      {/* Empty state */}
       {dailyData.length === 0 && !analyticsLoading && (
         <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            No attendance data found for the selected filters. Try adjusting your filters.
+          <CardContent className="py-12 text-center">
+            <BarChart3 className="mx-auto h-10 w-10 text-muted-foreground/40" />
+            <p className="mt-3 text-sm text-muted-foreground">
+              No attendance data found for the selected filters. Try adjusting
+              your date range or filters.
+            </p>
           </CardContent>
         </Card>
       )}

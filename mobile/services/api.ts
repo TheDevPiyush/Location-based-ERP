@@ -43,11 +43,31 @@ class ApiService {
   }
 
   private normalizeWindow(w: any): AttendanceWindow {
+    if (!w || typeof w !== 'object') return w as AttendanceWindow;
+
+    const durationRaw = w.duration ?? w.durationSec;
+    const duration =
+      durationRaw != null && !Number.isNaN(Number(durationRaw))
+        ? Math.max(30, Number(durationRaw))
+        : 30;
+
+    const startRaw = w.startTime ?? w.start_time;
+    let startIso: string | null = null;
+    if (startRaw != null && startRaw !== '') {
+      if (typeof startRaw === 'string') startIso = startRaw;
+      else if (startRaw instanceof Date) startIso = startRaw.toISOString();
+      else startIso = String(startRaw);
+    }
+
+    const active = w.isActive === true || w.is_active === true;
+
     return {
       ...w,
-      is_active: w.is_active ?? w.isActive ?? false,
-      start_time: w.start_time ?? w.startTime ?? null,
-      duration: w.duration ?? w.durationSec ?? null,
+      is_active: active,
+      isActive: active,
+      start_time: startIso ?? undefined,
+      startTime: startIso ?? undefined,
+      duration,
     };
   }
 
@@ -227,7 +247,11 @@ class ApiService {
   async markAttendance(
     attendance_window: any,
     imageUri: string,
-    location?: { latitude: number; longitude: number } | null,
+    opts?: {
+      location?: { latitude: number; longitude: number } | null;
+      /** Sends attendance_test_mode; server skips geofence when allowed (dev or ATTENDANCE_ALLOW_TEST_SKIP_GEOFENCE). */
+      testMode?: boolean;
+    } | null,
   ): Promise<unknown> {
     const uploadUri = await this.ensureFileUri(imageUri);
     const token = await this.getToken();
@@ -241,10 +265,15 @@ class ApiService {
     });
     formData.append('attendance_window', attendance_window);
 
-    // Include location if provided (production mode)
+    const location = opts?.location;
+    const testMode = opts?.testMode === true;
+
     if (location) {
       formData.append('latitude', String(location.latitude));
       formData.append('longitude', String(location.longitude));
+    }
+    if (testMode) {
+      formData.append('attendance_test_mode', 'true');
     }
 
     const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {

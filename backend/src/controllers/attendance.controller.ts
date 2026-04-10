@@ -67,13 +67,33 @@ export const markAttendance = async (req: Request, res: Response) => {
         const windowId = req.body.attendance_window;
         const latitudeRaw = req.body.latitude;
         const longitudeRaw = req.body.longitude;
-        
+        const testModeRaw = req.body.attendance_test_mode;
+
+        const isTestModeRequest =
+            testModeRaw === true ||
+            testModeRaw === "true" ||
+            testModeRaw === "1";
+
+        /** Allow skipping geofence when app sends test flag and server permits it (dev or explicit env). */
+        const allowTestSkipGeofence =
+            process.env.ATTENDANCE_ALLOW_TEST_SKIP_GEOFENCE === "true" ||
+            process.env.NODE_ENV !== "production";
+
+        const skipGeofence = isTestModeRequest && allowTestSkipGeofence;
+
         if (!windowId) return res.status(400).json({ error: "'attendance_window' is required" });
         
         if (!req.file) return res.status(400).json({ error: "A face photo is required" });
 
-        const latitude = latitudeRaw != null ? Number(latitudeRaw) : null;
-        const longitude = longitudeRaw != null ? Number(longitudeRaw) : null;
+        if (isTestModeRequest && !allowTestSkipGeofence) {
+            return res.status(403).json({
+                error:
+                    "Attendance test mode (skip location) is disabled on this server. Set ATTENDANCE_ALLOW_TEST_SKIP_GEOFENCE=true or disable test mode in the app.",
+            });
+        }
+
+        const latitude = latitudeRaw != null && latitudeRaw !== "" ? Number(latitudeRaw) : null;
+        const longitude = longitudeRaw != null && longitudeRaw !== "" ? Number(longitudeRaw) : null;
         console.log("[ATTENDANCE_LOCATION][backend] received", {
             userId: req.user.id,
             windowId,
@@ -81,6 +101,8 @@ export const markAttendance = async (req: Request, res: Response) => {
             longitudeRaw,
             latitude,
             longitude,
+            attendance_test_mode: testModeRaw,
+            skipGeofence,
         });
 
         const { record, created, similarity } = await markAttendanceRecord({
@@ -90,6 +112,7 @@ export const markAttendance = async (req: Request, res: Response) => {
             userRole: req.user.role!,
             latitude,
             longitude,
+            skipGeofence,
         });
 
         return res.status(created ? 201 : 200).json({
